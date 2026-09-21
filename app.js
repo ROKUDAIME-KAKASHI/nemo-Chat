@@ -512,6 +512,28 @@ async function selectChat(chatId) {
   renderMessages(messages);
 }
 
+// Claude-style reasoning parser
+function parseThoughtFromText(fullText) {
+  let thought = '';
+  let answer = fullText;
+
+  // Match complete <think>...</think> or <thought>...</thought>
+  const thinkMatch = fullText.match(/<(?:think|thought)>([\s\S]*?)<\/(?:think|thought)>/i);
+  if (thinkMatch) {
+    thought = thinkMatch[1].trim();
+    answer = fullText.replace(/<(?:think|thought)>[\s\S]*?<\/(?:think|thought)>/i, '').trim();
+  } else {
+    // Match unclosed opening tag during live streaming
+    const openMatch = fullText.match(/<(?:think|thought)>([\s\S]*)$/i);
+    if (openMatch) {
+      thought = openMatch[1].trim();
+      answer = '';
+    }
+  }
+
+  return { thought, answer };
+}
+
 // Rendering Messages
 function renderMessages(messages) {
   messagesContainer.innerHTML = '';
@@ -524,13 +546,13 @@ function renderMessages(messages) {
 
   welcomeScreen.style.display = 'none';
   messages.forEach(msg => {
-    appendMessageElement(msg.role, msg.content, msg.id, msg.attachments);
+    appendMessageElement(msg.role, msg.content, msg.id, msg.attachments, msg.thoughtData);
   });
 
   scrollToBottom();
 }
 
-function appendMessageElement(role, content = '', msgId = null, attachments = []) {
+function appendMessageElement(role, content = '', msgId = null, attachments = [], thoughtData = null) {
   welcomeScreen.style.display = 'none';
 
   const row = document.createElement('div');
@@ -539,7 +561,16 @@ function appendMessageElement(role, content = '', msgId = null, attachments = []
 
   const avatar = document.createElement('div');
   avatar.className = `avatar ${role}`;
-  avatar.textContent = role === 'user' ? 'U' : 'NM';
+  if (role === 'user') {
+    avatar.textContent = 'U';
+  } else {
+    avatar.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07l14.14-14.14"></path>
+      </svg>
+    `;
+    avatar.title = 'Mistral NeMo';
+  }
 
   const contentBox = document.createElement('div');
   contentBox.className = 'message-content';
@@ -567,7 +598,75 @@ function appendMessageElement(role, content = '', msgId = null, attachments = []
     textEl.textContent = content;
     contentBox.appendChild(textEl);
   } else {
-    contentBox.innerHTML = window.marked ? marked.parse(content) : escapeHtml(content);
+    // Assistant Message with Claude Thinking / Pondering
+    let thoughtText = thoughtData?.thought || '';
+    let thoughtSeconds = thoughtData?.seconds || 0;
+    let answerText = content;
+
+    const parsed = parseThoughtFromText(content);
+    if (parsed.thought) {
+      thoughtText = parsed.thought;
+      answerText = parsed.answer;
+    }
+
+    let thoughtBox = null;
+    if (thoughtData?.isLive) {
+      // Live streaming thought box
+      thoughtBox = document.createElement('div');
+      thoughtBox.className = 'claude-thought-box is-thinking';
+      thoughtBox.innerHTML = `
+        <div class="claude-thought-header">
+          <span class="claude-thought-shimmer">
+            <svg class="claude-sparkle-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07l14.14-14.14"></path>
+            </svg>
+            <span class="claude-thought-status">Thinking...</span>
+            <span class="claude-thought-timer">(0s)</span>
+          </span>
+          <svg class="claude-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+        <div class="claude-thought-body">
+          <div class="claude-thought-content">Pondering the prompt and formulating response...</div>
+        </div>
+      `;
+      thoughtBox.querySelector('.claude-thought-header').addEventListener('click', () => {
+        thoughtBox.classList.toggle('collapsed');
+      });
+      contentBox.appendChild(thoughtBox);
+    } else if (thoughtText || thoughtSeconds > 0) {
+      // Finished thought accordion
+      thoughtBox = document.createElement('div');
+      thoughtBox.className = 'claude-thought-box collapsed';
+      const label = thoughtSeconds > 0 ? `Thought for ${thoughtSeconds} second${thoughtSeconds === 1 ? '' : 's'}` : 'Thought process';
+      thoughtBox.innerHTML = `
+        <div class="claude-thought-header">
+          <span class="claude-thought-shimmer">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07l14.14-14.14"></path>
+            </svg>
+            <span style="font-weight: 500; color: var(--accent);">${label}</span>
+          </span>
+          <svg class="claude-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+        <div class="claude-thought-body">
+          <div class="claude-thought-content">${escapeHtml(thoughtText || 'Reasoned across prompt and context.')}</div>
+        </div>
+      `;
+      thoughtBox.querySelector('.claude-thought-header').addEventListener('click', () => {
+        thoughtBox.classList.toggle('collapsed');
+      });
+      contentBox.appendChild(thoughtBox);
+    }
+
+    const textEl = document.createElement('div');
+    textEl.className = 'message-text';
+    textEl.innerHTML = window.marked ? marked.parse(answerText) : escapeHtml(answerText);
+    contentBox.appendChild(textEl);
+
     if (content) {
       const actions = document.createElement('div');
       actions.className = 'message-actions';
@@ -581,12 +680,15 @@ function appendMessageElement(role, content = '', msgId = null, attachments = []
         </button>
       `;
       actions.querySelector('.copy-btn').addEventListener('click', () => {
-        navigator.clipboard.writeText(content);
+        navigator.clipboard.writeText(answerText);
         actions.querySelector('span').textContent = 'Copied!';
         setTimeout(() => actions.querySelector('span').textContent = 'Copy', 1500);
       });
       contentBox.appendChild(actions);
     }
+
+    contentBox.textEl = textEl;
+    contentBox.thoughtBox = thoughtBox;
   }
 
   row.appendChild(avatar);
@@ -679,12 +781,34 @@ async function handleSend() {
     }
   });
 
-  // Create UI element for assistant's pending response
-  const assistantContentBox = appendMessageElement('assistant', '');
+  // Create UI element for assistant's pending response with live thinking
+  const assistantContentBox = appendMessageElement('assistant', '', null, [], { isLive: true });
   toggleInputState(true);
 
   let fullResponse = '';
   abortController = new AbortController();
+
+  const startStreamTime = Date.now();
+  const PONDER_PHRASES = [
+    'Thinking...',
+    'Pondering...',
+    'Reviewing context...',
+    'Synthesizing response...',
+    'Reasoning...'
+  ];
+  let phraseIdx = 0;
+
+  const thinkingInterval = setInterval(() => {
+    if (!assistantContentBox.thoughtBox) return;
+    const elapsedSec = Math.floor((Date.now() - startStreamTime) / 1000);
+    const timerEl = assistantContentBox.thoughtBox.querySelector('.claude-thought-timer');
+    const statusEl = assistantContentBox.thoughtBox.querySelector('.claude-thought-status');
+    if (timerEl) timerEl.textContent = `(${elapsedSec}s)`;
+    if (statusEl && elapsedSec % 2 === 0) {
+      phraseIdx = (phraseIdx + 1) % PONDER_PHRASES.length;
+      statusEl.textContent = PONDER_PHRASES[phraseIdx];
+    }
+  }, 1000);
 
   try {
     let endpoint;
@@ -692,7 +816,6 @@ async function handleSend() {
     let bodyPayload;
 
     if (isHttp) {
-      // Use server proxy (Vercel serverless edge route or local server with env variables)
       endpoint = '/api/chat';
       bodyPayload = {
         apiKey: settings.apiKey || undefined,
@@ -701,7 +824,6 @@ async function handleSend() {
         messages: apiMessages
       };
     } else {
-      // Direct call if opened via file://
       const cleanBaseUrl = settings.baseUrl.replace(/\/+$/, '');
       endpoint = `${cleanBaseUrl}/chat/completions`;
       headers['Authorization'] = `Bearer ${settings.apiKey}`;
@@ -752,7 +874,13 @@ async function handleSend() {
             const token = choice?.delta?.content || '';
             if (token) {
               fullResponse += token;
-              assistantContentBox.innerHTML = window.marked ? marked.parse(fullResponse) : escapeHtml(fullResponse);
+              const { thought, answer } = parseThoughtFromText(fullResponse);
+              if (thought && assistantContentBox.thoughtBox) {
+                const thoughtContentEl = assistantContentBox.thoughtBox.querySelector('.claude-thought-content');
+                if (thoughtContentEl) thoughtContentEl.textContent = thought;
+              }
+              const displayAnswer = thought ? answer : fullResponse;
+              assistantContentBox.textEl.innerHTML = window.marked ? marked.parse(displayAnswer) : escapeHtml(displayAnswer);
               scrollToBottom();
             }
             if (choice?.finish_reason && choice.finish_reason !== null) {
@@ -771,8 +899,39 @@ async function handleSend() {
       await reader.cancel();
     } catch (_) {}
 
-    // Save final response to DB
-    await window.chatDb.addMessage(currentChatId, 'assistant', fullResponse);
+    clearInterval(thinkingInterval);
+    const elapsedSec = Math.max(1, Math.round((Date.now() - startStreamTime) / 1000));
+    const { thought, answer } = parseThoughtFromText(fullResponse);
+
+    // Finalize Claude Thought Box UI
+    if (assistantContentBox.thoughtBox) {
+      assistantContentBox.thoughtBox.classList.remove('is-thinking');
+      assistantContentBox.thoughtBox.classList.add('collapsed');
+      const headerEl = assistantContentBox.thoughtBox.querySelector('.claude-thought-header');
+      if (headerEl) {
+        headerEl.innerHTML = `
+          <span class="claude-thought-shimmer">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07l14.14-14.14"></path>
+            </svg>
+            <span style="font-weight: 500; color: var(--accent);">Thought for ${elapsedSec} second${elapsedSec === 1 ? '' : 's'}</span>
+          </span>
+          <svg class="claude-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        `;
+      }
+      const thoughtContentEl = assistantContentBox.thoughtBox.querySelector('.claude-thought-content');
+      if (thoughtContentEl && !thought) {
+        thoughtContentEl.textContent = 'Reasoned across prompt and context.';
+      }
+    }
+
+    const finalAnswer = thought ? answer : fullResponse;
+    const finalThoughtData = { thought, seconds: elapsedSec };
+
+    // Save final response and thinking time to DB
+    await window.chatDb.addMessage(currentChatId, 'assistant', finalAnswer, [], finalThoughtData);
 
     // Add copy action button
     const actions = document.createElement('div');
@@ -787,15 +946,19 @@ async function handleSend() {
       </button>
     `;
     actions.querySelector('.copy-btn').addEventListener('click', () => {
-      navigator.clipboard.writeText(fullResponse);
+      navigator.clipboard.writeText(finalAnswer);
       actions.querySelector('span').textContent = 'Copied!';
       setTimeout(() => actions.querySelector('span').textContent = 'Copy', 1500);
     });
     assistantContentBox.appendChild(actions);
 
   } catch (error) {
+    clearInterval(thinkingInterval);
+    if (assistantContentBox.thoughtBox) {
+      assistantContentBox.thoughtBox.classList.remove('is-thinking');
+    }
     if (error.name === 'AbortError') {
-      assistantContentBox.innerHTML += `<p><em>[Generation stopped]</em></p>`;
+      assistantContentBox.textEl.innerHTML += `<p><em>[Generation stopped]</em></p>`;
       if (fullResponse) {
         await window.chatDb.addMessage(currentChatId, 'assistant', fullResponse);
       }
@@ -805,9 +968,10 @@ async function handleSend() {
       if (window.location.protocol === 'file:' && (errMsg.includes('fetch') || errMsg.includes('network'))) {
         errMsg += `<br><br><small style="color: var(--text-muted)">💡 <strong>Browser restriction:</strong> Browsers block network requests from <code>file://</code> URLs. Please double-click <strong>run.bat</strong> or execute <code>python server.py</code> in the folder to open the app on <code>http://localhost:3000</code>.</small>`;
       }
-      assistantContentBox.innerHTML = `<p style="color: var(--danger)"><strong>Error:</strong> ${errMsg}</p>`;
+      assistantContentBox.textEl.innerHTML = `<p style="color: var(--danger)"><strong>Error:</strong> ${errMsg}</p>`;
     }
   } finally {
+    clearInterval(thinkingInterval);
     toggleInputState(false);
     abortController = null;
   }

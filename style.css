@@ -1,24 +1,25 @@
 :root {
-  --bg-primary: #12141a;
-  --bg-secondary: #1a1d26;
-  --bg-tertiary: #242836;
-  --bg-hover: #2d3345;
-  --text-main: #f0f2f5;
-  --text-muted: #9aa0a6;
-  --accent: #5e6ad2;
-  --accent-hover: #4e5ac0;
-  --accent-light: rgba(94, 106, 210, 0.15);
-  --border-color: #2b3040;
-  --danger: #ef4444;
-  --danger-hover: #dc2626;
-  --user-bubble: #282f44;
-  --assistant-bubble: #1a1e2b;
+  --bg-primary: #1e1e1c;
+  --bg-secondary: #262522;
+  --bg-tertiary: #2e2d29;
+  --bg-hover: #383632;
+  --text-main: #f5f4ef;
+  --text-muted: #a39f97;
+  --accent: #d97757;
+  --accent-hover: #c15f3c;
+  --accent-light: rgba(217, 119, 87, 0.15);
+  --border-color: #3b3935;
+  --danger: #e05252;
+  --danger-hover: #c93b3b;
+  --user-bubble: #2b2a26;
+  --assistant-bubble: #242320;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
   --sidebar-width: 260px;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
-  --font-mono: "Fira Code", Consolas, Monaco, "Courier New", Courier, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-serif: "Iowan Old Style", "Apple Garamond", "Baskerville", Georgia, serif;
+  --font-mono: "Fira Code", Consolas, Monaco, "Courier New", monospace;
 }
 
 * {
@@ -257,9 +258,10 @@ body {
 }
 
 .avatar.assistant {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  color: #10b981;
+  background: rgba(217, 119, 87, 0.15);
+  border: 1px solid rgba(217, 119, 87, 0.35);
+  color: var(--accent);
+  font-size: 16px;
 }
 
 .message-content {
@@ -276,7 +278,106 @@ body {
 
 .message-row.user .message-content {
   background: var(--user-bubble);
-  border-color: rgba(94, 106, 210, 0.3);
+  border-color: rgba(217, 119, 87, 0.25);
+}
+
+/* Claude Thinking / Pondering Container */
+.claude-thought-box {
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(217, 119, 87, 0.22);
+  background: rgba(217, 119, 87, 0.04);
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.claude-thought-box.is-thinking {
+  border-color: rgba(217, 119, 87, 0.45);
+  background: rgba(217, 119, 87, 0.07);
+  box-shadow: 0 0 12px rgba(217, 119, 87, 0.06);
+}
+
+.claude-thought-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
+  cursor: pointer;
+  user-select: none;
+}
+
+.claude-thought-header:hover {
+  background: rgba(217, 119, 87, 0.06);
+}
+
+.claude-thought-shimmer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Claude Sparkle Pulse / Rotate */
+.claude-sparkle-icon {
+  animation: claudePonder 3s ease-in-out infinite;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+@keyframes claudePonder {
+  0% { transform: scale(1) rotate(0deg); opacity: 0.8; }
+  50% { transform: scale(1.15) rotate(90deg); opacity: 1; filter: drop-shadow(0 0 4px var(--accent)); }
+  100% { transform: scale(1) rotate(180deg); opacity: 0.8; }
+}
+
+.claude-thought-box.is-thinking .claude-thought-status {
+  background: linear-gradient(90deg, #d97757 0%, #f4a261 50%, #d97757 100%);
+  background-size: 200% auto;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmerText 2.5s linear infinite;
+  font-weight: 600;
+}
+
+@keyframes shimmerText {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+.claude-thought-timer {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.claude-chevron {
+  transition: transform 0.2s ease;
+  color: var(--text-muted);
+}
+
+.claude-thought-box.collapsed .claude-chevron {
+  transform: rotate(-90deg);
+}
+
+.claude-thought-box.collapsed .claude-thought-body {
+  display: none;
+}
+
+.claude-thought-body {
+  padding: 10px 14px 12px;
+  border-top: 1px solid rgba(217, 119, 87, 0.15);
+  font-size: 13px;
+  line-height: 1.6;
+  color: #c4bfb6;
+  font-family: var(--font-mono);
+  background: rgba(0, 0, 0, 0.15);
+  max-height: 220px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* Markdown styling inside messages */

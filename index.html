@@ -70,18 +70,22 @@
       <section class="messages-container" id="messagesContainer">
         <!-- Welcoming placeholder when empty -->
         <div class="welcome-screen" id="welcomeScreen">
-          <div class="welcome-icon">⚡</div>
-          <h2>Mistral NeMo</h2>
-          <p>Powered by aicreds.in & browser IndexedDB storage.</p>
+          <div class="welcome-icon">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07l14.14-14.14"></path>
+            </svg>
+          </div>
+          <h2>Pondering with NeMo</h2>
+          <p>Thoughtful reasoning powered by Mistral NeMo & local browser storage.</p>
           <div class="welcome-tips">
-            <div class="tip-card" onclick="setInput('Explain how neural networks learn in simple terms.')">
-              "Explain how neural networks learn in simple terms."
+            <div class="tip-card" onclick="setInput('Think through and explain how neural networks learn in simple terms.')">
+              "Think through and explain how neural networks learn in simple terms."
             </div>
-            <div class="tip-card" onclick="setInput('Write a Python function to quicksort a list.')">
-              "Write a Python function to quicksort a list."
+            <div class="tip-card" onclick="setInput('Write an efficient Python quicksort function with step-by-step reasoning.')">
+              "Write an efficient Python quicksort function with step-by-step reasoning."
             </div>
-            <div class="tip-card" onclick="setInput('Draft a polite email asking for project updates.')">
-              "Draft a polite email asking for project updates."
+            <div class="tip-card" onclick="setInput('Analyze this text and outline the key insights.')">
+              "Analyze this text and outline the key insights."
             </div>
           </div>
         </div>

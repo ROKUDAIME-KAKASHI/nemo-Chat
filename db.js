@@ -126,13 +126,14 @@ class ChatDatabase {
   }
 
   // Messages CRUD
-  async addMessage(chatId, role, content, attachments = []) {
+  async addMessage(chatId, role, content, attachments = [], thoughtData = null) {
     const msg = {
       id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
       chatId,
       role,
       content,
       attachments,
+      thoughtData,
       timestamp: Date.now()
     };
 
