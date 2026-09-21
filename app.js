@@ -119,11 +119,55 @@ function formatFileSize(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-async function parseFile(file) {
-  const ext = file.name.split('.').pop().toLowerCase();
+const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'bmp'];
+
+// Lazy-load Tesseract.js only when an image or scanned document needs OCR
+let tesseractLoadedPromise = null;
+function loadTesseract() {
+  if (window.Tesseract) {
+    return Promise.resolve(window.Tesseract);
+  }
+  if (!tesseractLoadedPromise) {
+    tesseractLoadedPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+      script.onload = () => resolve(window.Tesseract);
+      script.onerror = () => reject(new Error('Failed to load OCR engine. Please check your network connection.'));
+      document.head.appendChild(script);
+    });
+  }
+  return tesseractLoadedPromise;
+}
+
+async function runOCR(imageSource, onProgress) {
+  const Tesseract = await loadTesseract();
+  const worker = await Tesseract.createWorker('eng', 1, {
+    logger: m => {
+      if (m.status === 'recognizing text' && onProgress) {
+        const pct = Math.round((m.progress || 0) * 100);
+        onProgress(`OCR: ${pct}%`);
+      } else if (onProgress && m.status && m.status !== 'recognizing text') {
+        onProgress('Analyzing...');
+      }
+    }
+  });
+  const ret = await worker.recognize(imageSource);
+  await worker.terminate();
+  return (ret && ret.data && ret.data.text) ? ret.data.text.trim() : '';
+}
+
+async function parseFile(file, onProgress) {
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const isImage = IMAGE_EXTS.includes(ext) || (file.type && file.type.startsWith('image/'));
   let content = '';
 
-  if (ext === 'pdf') {
+  if (isImage) {
+    if (onProgress) onProgress('Starting OCR...');
+    content = await runOCR(file, onProgress);
+    if (!content) {
+      content = '[Image was processed with OCR, but no text could be detected.]';
+    }
+  } else if (ext === 'pdf') {
     if (!window.pdfjsLib) {
       throw new Error('PDF parsing library is not ready.');
     }
@@ -131,28 +175,52 @@ async function parseFile(file) {
     const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
     const pdf = await loadingTask.promise;
     let fullPdfText = '';
+
     for (let i = 1; i <= pdf.numPages; i++) {
+      if (onProgress) onProgress(`Reading Page ${i}/${pdf.numPages}...`);
       const page = await pdf.getPage(i);
       const textContent = await page.getTextContent();
       const pageStrings = textContent.items.map(item => item.str).filter(Boolean);
-      fullPdfText += `--- Page ${i} ---\n${pageStrings.join(' ')}\n\n`;
+      const pageText = pageStrings.join(' ').trim();
+      if (pageText) {
+        fullPdfText += `--- Page ${i} ---\n${pageText}\n\n`;
+      }
     }
+
+    // Fallback to OCR if PDF has no selectable digital text (scanned document)
+    if (!fullPdfText.trim()) {
+      if (onProgress) onProgress('Scanned PDF detected. Running OCR...');
+      let ocrText = '';
+      const maxOcrPages = Math.min(pdf.numPages, 10);
+      for (let i = 1; i <= maxOcrPages; i++) {
+        if (onProgress) onProgress(`OCR Page ${i}/${maxOcrPages}...`);
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 1.5 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+        const pageOcr = await runOCR(canvas, p => {
+          if (onProgress) onProgress(`P.${i} ${p}`);
+        });
+        if (pageOcr) {
+          ocrText += `--- Page ${i} (Scanned OCR) ---\n${pageOcr}\n\n`;
+        }
+      }
+      fullPdfText = ocrText;
+    }
+
     content = fullPdfText.trim();
     if (!content) {
-      content = '[Note: PDF document appears to have no selectable text; it may be scanned or image-based.]';
+      content = '[Note: PDF document appears to have no selectable text or readable handwriting.]';
     }
   } else {
     // Plain text, code files, CSV, JSON, Markdown, YAML, logs, etc.
     content = await file.text();
   }
 
-  return {
-    id: 'att_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-    name: file.name,
-    size: file.size,
-    type: ext,
-    content: content
-  };
+  return content;
 }
 
 async function handleFiles(fileList) {
@@ -160,21 +228,47 @@ async function handleFiles(fileList) {
   if (!files.length) return;
 
   for (const file of files) {
-    if (file.size > 15 * 1024 * 1024) {
-      alert(`File "${file.name}" is too large (max 15MB).`);
+    if (file.size > 25 * 1024 * 1024) {
+      alert(`File "${file.name}" is too large (max 25MB).`);
       continue;
     }
 
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    const isImage = IMAGE_EXTS.includes(ext) || (file.type && file.type.startsWith('image/'));
+
+    const attItem = {
+      id: 'att_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      name: file.name || (isImage ? 'pasted-image.png' : 'file'),
+      size: file.size,
+      type: ext || (isImage ? 'png' : 'txt'),
+      isImage: isImage,
+      isPdf: ext === 'pdf',
+      status: 'processing',
+      statusText: isImage ? 'Initializing OCR...' : 'Reading...',
+      content: ''
+    };
+
+    pendingAttachments.push(attItem);
+    renderAttachmentTray();
+
     try {
-      const parsed = await parseFile(file);
-      pendingAttachments.push(parsed);
+      const content = await parseFile(file, (msg) => {
+        attItem.statusText = msg;
+        renderAttachmentTray();
+      });
+      attItem.content = content;
+      attItem.status = 'ready';
+      attItem.statusText = '';
     } catch (err) {
       console.error('Failed to parse file:', file.name, err);
-      alert(`Could not read "${file.name}": ${err.message}`);
+      attItem.status = 'error';
+      attItem.statusText = 'Error reading';
+      alert(`Could not process "${file.name}": ${err.message}`);
     }
+
+    renderAttachmentTray();
   }
 
-  renderAttachmentTray();
   messageInput.focus();
 }
 
@@ -191,12 +285,16 @@ function renderAttachmentTray() {
 
   pendingAttachments.forEach(att => {
     const chip = document.createElement('div');
-    chip.className = 'attachment-chip';
-    const isPdf = att.type === 'pdf';
+    chip.className = `attachment-chip ${att.status === 'processing' ? 'processing' : ''}`;
+    let icon = '📝';
+    if (att.isPdf) icon = '📄';
+    else if (att.isImage) icon = '🖼️';
+
     chip.innerHTML = `
-      <span class="chip-icon">${isPdf ? '📄' : '📝'}</span>
+      <span class="chip-icon">${icon}</span>
       <span class="chip-name" title="${escapeHtml(att.name)}">${escapeHtml(att.name)}</span>
       <span class="chip-size">(${formatFileSize(att.size)})</span>
+      ${att.statusText ? `<span class="chip-status">${escapeHtml(att.statusText)}</span>` : ''}
       <button type="button" class="chip-remove" title="Remove attachment">&times;</button>
     `;
 
@@ -450,13 +548,18 @@ function appendMessageElement(role, content = '', msgId = null, attachments = []
     if (attachments && attachments.length > 0) {
       const attachWrapper = document.createElement('div');
       attachWrapper.className = 'message-attachments';
-      attachWrapper.innerHTML = attachments.map(att => `
-        <span class="attachment-badge">
-          <span>${att.type === 'pdf' ? '📄' : '📎'}</span>
-          <span>${escapeHtml(att.name)}</span>
-          <small>(${formatFileSize(att.size)})</small>
-        </span>
-      `).join('');
+      attachWrapper.innerHTML = attachments.map(att => {
+        let icon = '📎';
+        if (att.type === 'pdf') icon = '📄';
+        else if (IMAGE_EXTS.includes(att.type)) icon = '🖼️';
+        return `
+          <span class="attachment-badge">
+            <span>${icon}</span>
+            <span>${escapeHtml(att.name)}</span>
+            <small>(${formatFileSize(att.size)})</small>
+          </span>
+        `;
+      }).join('');
       contentBox.appendChild(attachWrapper);
     }
     const textEl = document.createElement('div');
@@ -500,6 +603,11 @@ function scrollToBottom() {
 
 // Handling Chat & API Streaming
 async function handleSend() {
+  if (pendingAttachments.some(a => a.status === 'processing')) {
+    alert('Please wait for OCR / file processing to finish before sending.');
+    return;
+  }
+
   let text = messageInput.value.trim();
   const hasAttachments = pendingAttachments.length > 0;
 
@@ -542,7 +650,10 @@ async function handleSend() {
   let promptForModel = text;
   if (currentAttachments.length > 0) {
     const fileBlocks = currentAttachments.map(att => {
-      return `--- Start of File: ${att.name} ---\n${att.content}\n--- End of File: ${att.name} ---`;
+      const isImg = att.isImage || IMAGE_EXTS.includes(att.type);
+      const header = isImg ? `--- Start of Image (OCR Extracted Text): ${att.name} ---` : `--- Start of File: ${att.name} ---`;
+      const footer = isImg ? `--- End of Image (OCR): ${att.name} ---` : `--- End of File: ${att.name} ---`;
+      return `${header}\n${att.content}\n${footer}`;
     }).join('\n\n');
     promptForModel = `${fileBlocks}\n\nUser Request:\n${text}`;
   }

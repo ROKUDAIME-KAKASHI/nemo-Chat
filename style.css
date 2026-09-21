@@ -638,6 +638,17 @@ body {
   color: var(--danger);
 }
 
+.attachment-chip.processing {
+  border-color: rgba(94, 106, 210, 0.6);
+  background: rgba(94, 106, 210, 0.1);
+}
+
+.attachment-chip .chip-status {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
 .btn-attach {
   color: var(--text-muted);
   margin-bottom: 2px;
