@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mistral NeMo Chat</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Marked for Markdown rendering & Highlight.js for code blocks -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button id="newChatBtn" class="btn btn-primary new-chat-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>New Chat</span>
+        </button>
+      </div>
+
+      <div class="chat-list" id="chatList">
+        <!-- Rendered dynamically from IndexedDB -->
+      </div>
+
+      <div class="sidebar-footer">
+        <button id="openSettingsBtn" class="btn btn-sidebar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span>Settings</span>
+        </button>
+        <button id="clearAllBtn" class="btn btn-sidebar danger">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          <span>Clear History</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="chat-area">
+      <!-- Top Bar -->
+      <header class="chat-header">
+        <button id="toggleSidebarBtn" class="btn btn-icon sidebar-toggle">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <div class="model-badge">
+          <span class="status-dot"></span>
+          <span id="currentModelLabel">mistral-nemo</span>
+        </div>
+        <div class="chat-title" id="chatTitleDisplay">New Chat</div>
+      </header>
+
+      <!-- Messages Window -->
+      <section class="messages-container" id="messagesContainer">
+        <!-- Welcoming placeholder when empty -->
+        <div class="welcome-screen" id="welcomeScreen">
+          <div class="welcome-icon">⚡</div>
+          <h2>Mistral NeMo</h2>
+          <p>Powered by aicreds.in & browser IndexedDB storage.</p>
+          <div class="welcome-tips">
+            <div class="tip-card" onclick="setInput('Explain how neural networks learn in simple terms.')">
+              "Explain how neural networks learn in simple terms."
+            </div>
+            <div class="tip-card" onclick="setInput('Write a Python function to quicksort a list.')">
+              "Write a Python function to quicksort a list."
+            </div>
+            <div class="tip-card" onclick="setInput('Draft a polite email asking for project updates.')">
+              "Draft a polite email asking for project updates."
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Input Area -->
+      <footer class="chat-input-area">
+        <div class="input-wrapper">
+          <textarea
+            id="messageInput"
+            placeholder="Send a message... (Shift + Enter for new line)"
+            rows="1"
+          ></textarea>
+          <div class="input-actions">
+            <button id="sendBtn" class="btn btn-icon btn-send" title="Send message">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+            <button id="stopBtn" class="btn btn-icon btn-stop" title="Stop generating" style="display: none;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="input-footnote">
+          Mistral NeMo may produce inaccurate information. Responses are saved locally in your browser.
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-backdrop" id="settingsModal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>API & Model Settings</h3>
+        <button id="closeSettingsBtn" class="btn btn-icon">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label for="apiKeyInput">aicreds.in API Key <span class="required">*</span></label>
+        <div class="password-input-group">
+          <input type="password" id="apiKeyInput" placeholder="sk-..." autocomplete="off" />
+          <button type="button" id="toggleApiKeyVisibility" class="btn btn-icon">👁️</button>
+        </div>
+        <small class="helper-text">Stored securely in your browser's localStorage.</small>
+
+        <label for="baseUrlInput" style="margin-top: 14px;">API Base URL</label>
+        <input type="text" id="baseUrlInput" value="https://api.aicredits.in/v1" />
+        <small class="helper-text">Standard OpenAI-compatible endpoint for aicredits.in</small>
+
+        <label for="modelNameInput" style="margin-top: 14px;">Model Name</label>
+        <input type="text" id="modelNameInput" value="mistralai/mistral-nemo" />
+        <small class="helper-text">e.g. <code>mistralai/mistral-nemo</code></small>
+
+        <label for="systemPromptInput" style="margin-top: 14px;">System Prompt</label>
+        <textarea id="systemPromptInput" rows="3">You are Mistral NeMo, a helpful, precise, and thoughtful AI assistant.</textarea>
+      </div>
+      <div class="modal-footer">
+        <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="env.js"></script>
+  <script src="db.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
