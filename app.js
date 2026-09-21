@@ -44,11 +44,49 @@ const clearAllBtn = document.getElementById('clearAllBtn');
 const chatTitleDisplay = document.getElementById('chatTitleDisplay');
 const currentModelLabel = document.getElementById('currentModelLabel');
 
-// Workspace elements
+// Workspace & OOA Passcode elements
+const OOA_PASSCODE = 'OOA_2026';
 let currentWorkspace = 'personal'; // 'personal' or 'ooa'
 const tabPersonal = document.getElementById('tabPersonal');
 const tabOOA = document.getElementById('tabOOA');
 const newChatBtnText = document.getElementById('newChatBtnText');
+const ooaPasscodeModal = document.getElementById('ooaPasscodeModal');
+const closeOoaPasscodeBtn = document.getElementById('closeOoaPasscodeBtn');
+const ooaPasscodeForm = document.getElementById('ooaPasscodeForm');
+const ooaUserNameInput = document.getElementById('ooaUserNameInput');
+const ooaPasscodeInput = document.getElementById('ooaPasscodeInput');
+const ooaPasscodeError = document.getElementById('ooaPasscodeError');
+
+function isOoaUnlocked() {
+  return localStorage.getItem('ooa_unlocked') === 'true';
+}
+
+function openOoaPasscodeModal() {
+  if (ooaUserNameInput) {
+    ooaUserNameInput.value = localStorage.getItem('ooa_display_name') || '';
+  }
+  if (ooaPasscodeInput) {
+    ooaPasscodeInput.value = '';
+  }
+  if (ooaPasscodeError) {
+    ooaPasscodeError.style.display = 'none';
+    ooaPasscodeError.textContent = '';
+  }
+  if (ooaPasscodeModal) {
+    ooaPasscodeModal.style.display = 'flex';
+    if (ooaUserNameInput && !ooaUserNameInput.value) {
+      ooaUserNameInput.focus();
+    } else if (ooaPasscodeInput) {
+      ooaPasscodeInput.focus();
+    }
+  }
+}
+
+function closeOoaPasscodeModal() {
+  if (ooaPasscodeModal) {
+    ooaPasscodeModal.style.display = 'none';
+  }
+}
 
 // Attachment elements
 const attachmentTray = document.getElementById('attachmentTray');
@@ -127,6 +165,11 @@ async function initApp() {
 
 // Workspace Management
 async function switchWorkspace(ws) {
+  if (ws === 'ooa' && !isOoaUnlocked()) {
+    openOoaPasscodeModal();
+    return;
+  }
+
   if (currentWorkspace === ws) return;
 
   currentWorkspace = ws;
@@ -422,6 +465,34 @@ function setupEventListeners() {
   }
   if (tabOOA) {
     tabOOA.addEventListener('click', () => switchWorkspace('ooa'));
+  }
+
+  // OOA Passcode Modal events
+  if (closeOoaPasscodeBtn) {
+    closeOoaPasscodeBtn.addEventListener('click', closeOoaPasscodeModal);
+  }
+  if (ooaPasscodeModal) {
+    ooaPasscodeModal.addEventListener('click', (e) => {
+      if (e.target === ooaPasscodeModal) closeOoaPasscodeModal();
+    });
+  }
+  if (ooaPasscodeForm) {
+    ooaPasscodeForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = ooaPasscodeInput.value.trim();
+      const name = ooaUserNameInput.value.trim() || 'Teammate';
+
+      if (code === OOA_PASSCODE) {
+        localStorage.setItem('ooa_unlocked', 'true');
+        localStorage.setItem('ooa_display_name', name);
+        closeOoaPasscodeModal();
+        await switchWorkspace('ooa');
+      } else {
+        ooaPasscodeError.textContent = 'Incorrect team passcode. Please enter OOA_2026.';
+        ooaPasscodeError.style.display = 'block';
+        ooaPasscodeInput.focus();
+      }
+    });
   }
 
   // Clear history for current workspace
@@ -847,9 +918,10 @@ async function handleSend() {
   adjustTextareaHeight();
 
   // Save user message to DB
+  const authorName = currentWorkspace === 'ooa' ? (localStorage.getItem('ooa_display_name') || 'Teammate') : 'You';
   const attachmentMeta = currentAttachments.map(a => ({ name: a.name, size: a.size, type: a.type }));
-  const savedUserMsg = await window.chatDb.addMessage(currentChatId, 'user', text, attachmentMeta);
-  appendMessageElement('user', text, savedUserMsg?.id, attachmentMeta);
+  const savedUserMsg = await window.chatDb.addMessage(currentChatId, 'user', text, attachmentMeta, null, authorName);
+  appendMessageElement('user', text, savedUserMsg?.id, attachmentMeta, null, authorName);
 
   // Construct prompt containing attached file contents for LLM
   let promptForModel = text;
@@ -1034,7 +1106,7 @@ async function handleSend() {
     const finalThoughtData = { thought, seconds: elapsedSec };
 
     // Save final response and thinking time to DB
-    const savedAssistantMsg = await window.chatDb.addMessage(currentChatId, 'assistant', finalAnswer, [], finalThoughtData);
+    const savedAssistantMsg = await window.chatDb.addMessage(currentChatId, 'assistant', finalAnswer, [], finalThoughtData, 'Mistral NeMo');
     if (assistantContentBox.parentElement && savedAssistantMsg?.id) {
       assistantContentBox.parentElement.dataset.id = savedAssistantMsg.id;
     }

@@ -156,6 +156,36 @@
     </main>
   </div>
 
+  <!-- OOA Team Passcode Modal -->
+  <div class="modal-backdrop" id="ooaPasscodeModal" style="display: none;">
+    <div class="modal-content auth-modal-content">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 20px;">👥</span>
+          <h3>Join OOA Team Room</h3>
+        </div>
+        <button id="closeOoaPasscodeBtn" class="btn btn-icon">&times;</button>
+      </div>
+      <form id="ooaPasscodeForm" class="modal-body" style="padding-top: 0;">
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 14px;">
+          Enter your display name and the team passcode to collaborate with all OOA members in real time.
+        </p>
+
+        <label for="ooaUserNameInput">Your Name / Handle</label>
+        <input type="text" id="ooaUserNameInput" placeholder="e.g. Kakashi, Alex, Dev" required autocomplete="nickname" maxlength="25" />
+
+        <label for="ooaPasscodeInput" style="margin-top: 14px;">Team Passcode</label>
+        <input type="password" id="ooaPasscodeInput" placeholder="Enter team passcode..." required autocomplete="off" />
+
+        <div id="ooaPasscodeError" class="auth-error" style="display: none;"></div>
+
+        <div class="modal-footer" style="margin-top: 20px;">
+          <button type="submit" id="ooaJoinBtn" class="btn btn-primary" style="width: 100%;">Enter OOA Team Room</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Settings Modal -->
   <div class="modal-backdrop" id="settingsModal" style="display: none;">
     <div class="modal-content">
