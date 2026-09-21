@@ -16,12 +16,16 @@ if os.path.exists(env_path):
 api_key = config.get('API_KEY', '')
 base_url = config.get('BASE_URL', 'https://api.aicredits.in/v1')
 model_name = config.get('MODEL_NAME', 'mistralai/mistral-nemo')
+supabase_url = config.get('SUPABASE_URL', '')
+supabase_anon_key = config.get('SUPABASE_ANON_KEY', '')
 
 js_content = f"""// Auto-generated configuration from .env
 window.ENV = {{
   API_KEY: {repr(api_key)},
   BASE_URL: {repr(base_url)},
-  MODEL_NAME: {repr(model_name)}
+  MODEL_NAME: {repr(model_name)},
+  SUPABASE_URL: {repr(supabase_url)},
+  SUPABASE_ANON_KEY: {repr(supabase_anon_key)}
 }};
 """
 

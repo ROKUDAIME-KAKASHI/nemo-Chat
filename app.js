@@ -44,6 +44,25 @@ const clearAllBtn = document.getElementById('clearAllBtn');
 const chatTitleDisplay = document.getElementById('chatTitleDisplay');
 const currentModelLabel = document.getElementById('currentModelLabel');
 
+// Workspace & Auth elements
+let currentWorkspace = 'personal'; // 'personal' or 'ooa'
+let authMode = 'signin'; // 'signin' or 'signup'
+const tabPersonal = document.getElementById('tabPersonal');
+const tabOOA = document.getElementById('tabOOA');
+const newChatBtnText = document.getElementById('newChatBtnText');
+const authBtn = document.getElementById('authBtn');
+const authBtnLabel = document.getElementById('authBtnLabel');
+const authModal = document.getElementById('authModal');
+const closeAuthBtn = document.getElementById('closeAuthBtn');
+const authForm = document.getElementById('authForm');
+const authEmail = document.getElementById('authEmail');
+const authPassword = document.getElementById('authPassword');
+const authSubmitBtn = document.getElementById('authSubmitBtn');
+const authErrorMsg = document.getElementById('authErrorMsg');
+const tabSignIn = document.getElementById('tabSignIn');
+const tabSignUp = document.getElementById('tabSignUp');
+const authModalTitle = document.getElementById('authModalTitle');
+
 // Attachment elements
 const attachmentTray = document.getElementById('attachmentTray');
 const attachBtn = document.getElementById('attachBtn');
@@ -83,9 +102,8 @@ window.setInput = function(text) {
 
 // Initialize Application
 async function initApp() {
-  await window.chatDb.init();
-  setupEventListeners();
-  await loadChatList();
+  let sbUrl = env.SUPABASE_URL || '';
+  let sbKey = env.SUPABASE_ANON_KEY || '';
 
   // If running on a web server (e.g. Vercel or local proxy), fetch server configuration
   if (window.location.protocol.startsWith('http')) {
@@ -99,13 +117,98 @@ async function initApp() {
         if (serverConfig.baseUrl && !localStorage.getItem('nemo_base_url')) {
           settings.baseUrl = serverConfig.baseUrl;
         }
+        if (serverConfig.supabaseUrl) {
+          sbUrl = serverConfig.supabaseUrl;
+        }
+        if (serverConfig.supabaseAnonKey) {
+          sbKey = serverConfig.supabaseAnonKey;
+        }
       }
     } catch (_) {
       // Fallback silently if /api/config is not available
     }
   }
 
+  await window.chatDb.init({ url: sbUrl, key: sbKey });
+
+  // Listen to auth state changes from Supabase
+  window.chatDb.onAuthStateChange((event, session) => {
+    updateAuthUI(session);
+  });
+
+  updateAuthUI(window.chatDb.currentUser ? { user: window.chatDb.currentUser } : null);
+
+  setupEventListeners();
+  await loadChatList();
   updateModelBadge();
+}
+
+// Workspace & Auth Helpers
+function updateAuthUI(session) {
+  const user = session?.user || window.chatDb.currentUser;
+  if (user) {
+    const email = user.email || '';
+    const shortName = email.split('@')[0] || 'User';
+    authBtnLabel.textContent = shortName;
+    authBtn.title = `Signed in as ${email}. Click to sign out.`;
+  } else {
+    authBtnLabel.textContent = 'Sign In';
+    authBtn.title = 'Sign In / Register';
+  }
+}
+
+function openAuthModal(mode = 'signin') {
+  authMode = mode;
+  authErrorMsg.style.display = 'none';
+  authErrorMsg.textContent = '';
+  if (authMode === 'signin') {
+    tabSignIn.classList.add('active');
+    tabSignUp.classList.remove('active');
+    authModalTitle.textContent = 'Sign In';
+    authSubmitBtn.textContent = 'Sign In';
+  } else {
+    tabSignUp.classList.add('active');
+    tabSignIn.classList.remove('active');
+    authModalTitle.textContent = 'Create Account';
+    authSubmitBtn.textContent = 'Create Account';
+  }
+  authModal.style.display = 'flex';
+  authEmail.focus();
+}
+
+function closeAuthModal() {
+  authModal.style.display = 'none';
+  authErrorMsg.style.display = 'none';
+  authForm.reset();
+}
+
+async function switchWorkspace(ws) {
+  if (currentWorkspace === ws) return;
+
+  if (ws === 'ooa' && !window.chatDb.currentUser) {
+    const proceed = confirm('OOA Team Room requires signing in so your teammates can see your messages. Sign in now?');
+    if (proceed) {
+      openAuthModal('signin');
+    }
+    return;
+  }
+
+  currentWorkspace = ws;
+  window.chatDb.currentWorkspace = ws;
+
+  if (ws === 'personal') {
+    tabPersonal.classList.add('active');
+    tabOOA.classList.remove('active');
+    newChatBtnText.textContent = 'New Chat';
+  } else {
+    tabOOA.classList.add('active');
+    tabPersonal.classList.remove('active');
+    newChatBtnText.textContent = 'New Team Room';
+  }
+
+  window.chatDb.unsubscribeActiveChat();
+  currentChatId = null;
+  await loadChatList();
 }
 
 function updateModelBadge() {
@@ -377,14 +480,89 @@ function setupEventListeners() {
     });
   }
 
-  // Clear history
+  // Workspace Tabs
+  if (tabPersonal) {
+    tabPersonal.addEventListener('click', () => switchWorkspace('personal'));
+  }
+  if (tabOOA) {
+    tabOOA.addEventListener('click', () => switchWorkspace('ooa'));
+  }
+
+  // Auth Button (Sign In / Account Sign Out)
+  if (authBtn) {
+    authBtn.addEventListener('click', async () => {
+      if (window.chatDb.currentUser) {
+        const confirmLogout = confirm(`Signed in as ${window.chatDb.currentUser.email}. Do you want to sign out?`);
+        if (confirmLogout) {
+          await window.chatDb.signOut();
+          updateAuthUI(null);
+          await switchWorkspace('personal');
+          await loadChatList();
+        }
+      } else {
+        openAuthModal('signin');
+      }
+    });
+  }
+
+  // Auth Modal Controls
+  if (closeAuthBtn) {
+    closeAuthBtn.addEventListener('click', closeAuthModal);
+  }
+  if (tabSignIn) {
+    tabSignIn.addEventListener('click', () => openAuthModal('signin'));
+  }
+  if (tabSignUp) {
+    tabSignUp.addEventListener('click', () => openAuthModal('signup'));
+  }
+  if (authModal) {
+    authModal.addEventListener('click', (e) => {
+      if (e.target === authModal) closeAuthModal();
+    });
+  }
+
+  // Auth Form Submission
+  if (authForm) {
+    authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = authEmail.value.trim();
+      const password = authPassword.value;
+      if (!email || !password) return;
+
+      authSubmitBtn.disabled = true;
+      authSubmitBtn.textContent = 'Please wait...';
+      authErrorMsg.style.display = 'none';
+
+      try {
+        if (authMode === 'signin') {
+          await window.chatDb.signIn(email, password);
+        } else {
+          await window.chatDb.signUp(email, password);
+          alert('Account registered successfully! You are now signed in.');
+        }
+        closeAuthModal();
+        updateAuthUI({ user: window.chatDb.currentUser });
+        await loadChatList();
+      } catch (err) {
+        console.error('Auth error:', err);
+        authErrorMsg.textContent = err.message || 'Authentication failed. Please check your credentials.';
+        authErrorMsg.style.display = 'block';
+      } finally {
+        authSubmitBtn.disabled = false;
+        authSubmitBtn.textContent = authMode === 'signin' ? 'Sign In' : 'Create Account';
+      }
+    });
+  }
+
+  // Clear history for current workspace
   clearAllBtn.addEventListener('click', async () => {
-    if (confirm('Are you sure you want to delete all chat history?')) {
-      await window.chatDb.clearAll();
+    const wsLabel = currentWorkspace === 'ooa' ? 'OOA Team Room' : 'Private';
+    if (confirm(`Are you sure you want to delete all chat history in the ${wsLabel} workspace?`)) {
+      await window.chatDb.clearAll(currentWorkspace);
       currentChatId = null;
       await loadChatList();
       renderMessages([]);
-      chatTitleDisplay.textContent = 'New Chat';
+      chatTitleDisplay.textContent = currentWorkspace === 'ooa' ? 'OOA Team Room' : 'New Chat';
     }
   });
 
@@ -445,7 +623,7 @@ function saveSettings() {
 
 // Chat Management
 async function loadChatList() {
-  const chats = await window.chatDb.getAllChats();
+  const chats = await window.chatDb.getAllChats(currentWorkspace);
   chatListEl.innerHTML = '';
 
   chats.forEach(chat => {
@@ -472,7 +650,7 @@ async function loadChatList() {
       await window.chatDb.deleteChat(chat.id);
       if (currentChatId === chat.id) {
         currentChatId = null;
-        chatTitleDisplay.textContent = 'New Chat';
+        chatTitleDisplay.textContent = currentWorkspace === 'ooa' ? 'OOA Team Room' : 'New Chat';
       }
       await loadChatList();
       if (!currentChatId) {
@@ -486,12 +664,14 @@ async function loadChatList() {
   if (!currentChatId && chats.length > 0) {
     selectChat(chats[0].id);
   } else if (!currentChatId) {
+    chatTitleDisplay.textContent = currentWorkspace === 'ooa' ? 'OOA Team Room' : 'New Chat';
     renderMessages([]);
   }
 }
 
 async function createNewChat() {
-  const chat = await window.chatDb.createChat();
+  const defaultTitle = currentWorkspace === 'ooa' ? 'OOA Team Room' : 'New Chat';
+  const chat = await window.chatDb.createChat(defaultTitle, currentWorkspace);
   currentChatId = chat.id;
   await loadChatList();
   selectChat(chat.id);
@@ -500,9 +680,11 @@ async function createNewChat() {
 
 async function selectChat(chatId) {
   currentChatId = chatId;
-  const chats = await window.chatDb.getAllChats();
+  window.chatDb.unsubscribeActiveChat();
+
+  const chats = await window.chatDb.getAllChats(currentWorkspace);
   const currentChat = chats.find(c => c.id === chatId);
-  chatTitleDisplay.textContent = currentChat ? currentChat.title : 'New Chat';
+  chatTitleDisplay.textContent = currentChat ? currentChat.title : (currentWorkspace === 'ooa' ? 'OOA Team Room' : 'New Chat');
 
   document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
   const currentItem = [...chatListEl.children].find(el => el.textContent.includes(currentChat?.title));
@@ -510,6 +692,15 @@ async function selectChat(chatId) {
 
   const messages = await window.chatDb.getMessages(chatId);
   renderMessages(messages);
+
+  // Subscribe to real-time updates for team room in OOA workspace
+  if (currentWorkspace === 'ooa') {
+    window.chatDb.subscribeToChat(chatId, (newMsg) => {
+      if (!document.querySelector(`.message-row[data-id="${newMsg.id}"]`)) {
+        appendMessageElement(newMsg.role, newMsg.content, newMsg.id, newMsg.attachments, newMsg.thoughtData, newMsg.userEmail);
+      }
+    });
+  }
 }
 
 // Claude-style reasoning parser
@@ -539,6 +730,15 @@ function renderMessages(messages) {
   messagesContainer.innerHTML = '';
 
   if (!messages || messages.length === 0) {
+    const h2 = welcomeScreen.querySelector('h2');
+    const p = welcomeScreen.querySelector('p');
+    if (currentWorkspace === 'ooa') {
+      if (h2) h2.textContent = 'OOA Team Workspace';
+      if (p) p.textContent = 'Real-time collaborative AI room for OOA team members.';
+    } else {
+      if (h2) h2.textContent = 'Pondering with NeMo';
+      if (p) p.textContent = 'Thoughtful reasoning powered by Mistral NeMo & your secure account.';
+    }
     messagesContainer.appendChild(welcomeScreen);
     welcomeScreen.style.display = 'block';
     return;
@@ -546,13 +746,13 @@ function renderMessages(messages) {
 
   welcomeScreen.style.display = 'none';
   messages.forEach(msg => {
-    appendMessageElement(msg.role, msg.content, msg.id, msg.attachments, msg.thoughtData);
+    appendMessageElement(msg.role, msg.content, msg.id, msg.attachments, msg.thoughtData, msg.userEmail);
   });
 
   scrollToBottom();
 }
 
-function appendMessageElement(role, content = '', msgId = null, attachments = [], thoughtData = null) {
+function appendMessageElement(role, content = '', msgId = null, attachments = [], thoughtData = null, userEmail = '') {
   welcomeScreen.style.display = 'none';
 
   const row = document.createElement('div');
@@ -562,7 +762,9 @@ function appendMessageElement(role, content = '', msgId = null, attachments = []
   const avatar = document.createElement('div');
   avatar.className = `avatar ${role}`;
   if (role === 'user') {
-    avatar.textContent = 'U';
+    const initial = userEmail ? userEmail.charAt(0).toUpperCase() : 'U';
+    avatar.textContent = initial;
+    if (userEmail) avatar.title = userEmail;
   } else {
     avatar.innerHTML = `
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
@@ -576,6 +778,15 @@ function appendMessageElement(role, content = '', msgId = null, attachments = []
   contentBox.className = 'message-content';
 
   if (role === 'user') {
+    // Show sender badge in OOA team room
+    if (currentWorkspace === 'ooa' || (userEmail && userEmail !== 'You')) {
+      const authorTag = document.createElement('div');
+      authorTag.className = 'message-author-tag';
+      const displayName = userEmail ? userEmail.split('@')[0] : 'Teammate';
+      authorTag.textContent = `👤 ${displayName}`;
+      contentBox.appendChild(authorTag);
+    }
+
     if (attachments && attachments.length > 0) {
       const attachWrapper = document.createElement('div');
       attachWrapper.className = 'message-attachments';
@@ -710,6 +921,13 @@ async function handleSend() {
     return;
   }
 
+  // If in OOA team workspace and not signed in, require authentication
+  if (currentWorkspace === 'ooa' && !window.chatDb.currentUser) {
+    alert('Please sign in with your email to collaborate in the OOA Team Room.');
+    openAuthModal('signin');
+    return;
+  }
+
   let text = messageInput.value.trim();
   const hasAttachments = pendingAttachments.length > 0;
 
@@ -730,7 +948,8 @@ async function handleSend() {
 
   // Ensure an active chat session exists
   if (!currentChatId) {
-    const newChat = await window.chatDb.createChat();
+    const defaultTitle = currentWorkspace === 'ooa' ? 'OOA Team Room' : 'New Chat';
+    const newChat = await window.chatDb.createChat(defaultTitle, currentWorkspace);
     currentChatId = newChat.id;
   }
 
@@ -745,8 +964,8 @@ async function handleSend() {
 
   // Save user message to DB
   const attachmentMeta = currentAttachments.map(a => ({ name: a.name, size: a.size, type: a.type }));
-  await window.chatDb.addMessage(currentChatId, 'user', text, attachmentMeta);
-  appendMessageElement('user', text, null, attachmentMeta);
+  const savedUserMsg = await window.chatDb.addMessage(currentChatId, 'user', text, attachmentMeta);
+  appendMessageElement('user', text, savedUserMsg?.id, attachmentMeta, null, window.chatDb.currentUser?.email);
 
   // Construct prompt containing attached file contents for LLM
   let promptForModel = text;
@@ -931,7 +1150,10 @@ async function handleSend() {
     const finalThoughtData = { thought, seconds: elapsedSec };
 
     // Save final response and thinking time to DB
-    await window.chatDb.addMessage(currentChatId, 'assistant', finalAnswer, [], finalThoughtData);
+    const savedAssistantMsg = await window.chatDb.addMessage(currentChatId, 'assistant', finalAnswer, [], finalThoughtData);
+    if (assistantContentBox.parentElement && savedAssistantMsg?.id) {
+      assistantContentBox.parentElement.dataset.id = savedAssistantMsg.id;
+    }
 
     // Add copy action button
     const actions = document.createElement('div');

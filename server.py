@@ -46,7 +46,9 @@ class NemoHandler(http.server.SimpleHTTPRequestHandler):
             cfg_resp = {
                 'configured': bool(config.get('API_KEY') or os.environ.get('API_KEY')),
                 'baseUrl': config.get('BASE_URL') or os.environ.get('BASE_URL', 'https://api.aicredits.in/v1'),
-                'modelName': config.get('MODEL_NAME') or os.environ.get('MODEL_NAME', 'mistralai/mistral-nemo')
+                'modelName': config.get('MODEL_NAME') or os.environ.get('MODEL_NAME', 'mistralai/mistral-nemo'),
+                'supabaseUrl': config.get('SUPABASE_URL') or os.environ.get('SUPABASE_URL', ''),
+                'supabaseAnonKey': config.get('SUPABASE_ANON_KEY') or os.environ.get('SUPABASE_ANON_KEY', '')
             }
             self.wfile.write(json.dumps(cfg_resp).encode('utf-8'))
             return
