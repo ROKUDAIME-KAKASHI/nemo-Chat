@@ -1,6 +1,12 @@
 // Application Logic for Mistral NeMo Chat
 let currentChatId = null;
 let abortController = null;
+let pendingAttachments = []; // [{ id, name, size, type, content }]
+
+// Configure PDF.js worker if available
+if (window.pdfjsLib) {
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
 
 // Load from env.js if present
 const env = window.ENV || {};
@@ -37,6 +43,12 @@ const newChatBtn = document.getElementById('newChatBtn');
 const clearAllBtn = document.getElementById('clearAllBtn');
 const chatTitleDisplay = document.getElementById('chatTitleDisplay');
 const currentModelLabel = document.getElementById('currentModelLabel');
+
+// Attachment elements
+const attachmentTray = document.getElementById('attachmentTray');
+const attachBtn = document.getElementById('attachBtn');
+const fileInput = document.getElementById('fileInput');
+const dragOverlay = document.getElementById('dragOverlay');
 
 // Settings modal elements
 const settingsModal = document.getElementById('settingsModal');
@@ -100,6 +112,103 @@ function updateModelBadge() {
   currentModelLabel.textContent = settings.modelName;
 }
 
+function formatFileSize(bytes) {
+  if (!bytes) return '0 B';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+async function parseFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  let content = '';
+
+  if (ext === 'pdf') {
+    if (!window.pdfjsLib) {
+      throw new Error('PDF parsing library is not ready.');
+    }
+    const arrayBuffer = await file.arrayBuffer();
+    const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
+    const pdf = await loadingTask.promise;
+    let fullPdfText = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageStrings = textContent.items.map(item => item.str).filter(Boolean);
+      fullPdfText += `--- Page ${i} ---\n${pageStrings.join(' ')}\n\n`;
+    }
+    content = fullPdfText.trim();
+    if (!content) {
+      content = '[Note: PDF document appears to have no selectable text; it may be scanned or image-based.]';
+    }
+  } else {
+    // Plain text, code files, CSV, JSON, Markdown, YAML, logs, etc.
+    content = await file.text();
+  }
+
+  return {
+    id: 'att_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+    name: file.name,
+    size: file.size,
+    type: ext,
+    content: content
+  };
+}
+
+async function handleFiles(fileList) {
+  const files = Array.from(fileList);
+  if (!files.length) return;
+
+  for (const file of files) {
+    if (file.size > 15 * 1024 * 1024) {
+      alert(`File "${file.name}" is too large (max 15MB).`);
+      continue;
+    }
+
+    try {
+      const parsed = await parseFile(file);
+      pendingAttachments.push(parsed);
+    } catch (err) {
+      console.error('Failed to parse file:', file.name, err);
+      alert(`Could not read "${file.name}": ${err.message}`);
+    }
+  }
+
+  renderAttachmentTray();
+  messageInput.focus();
+}
+
+function renderAttachmentTray() {
+  if (!attachmentTray) return;
+  if (!pendingAttachments.length) {
+    attachmentTray.style.display = 'none';
+    attachmentTray.innerHTML = '';
+    return;
+  }
+
+  attachmentTray.style.display = 'flex';
+  attachmentTray.innerHTML = '';
+
+  pendingAttachments.forEach(att => {
+    const chip = document.createElement('div');
+    chip.className = 'attachment-chip';
+    const isPdf = att.type === 'pdf';
+    chip.innerHTML = `
+      <span class="chip-icon">${isPdf ? '📄' : '📝'}</span>
+      <span class="chip-name" title="${escapeHtml(att.name)}">${escapeHtml(att.name)}</span>
+      <span class="chip-size">(${formatFileSize(att.size)})</span>
+      <button type="button" class="chip-remove" title="Remove attachment">&times;</button>
+    `;
+
+    chip.querySelector('.chip-remove').addEventListener('click', () => {
+      pendingAttachments = pendingAttachments.filter(a => a.id !== att.id);
+      renderAttachmentTray();
+    });
+
+    attachmentTray.appendChild(chip);
+  });
+}
+
 function setupEventListeners() {
   // New Chat
   newChatBtn.addEventListener('click', () => createNewChat());
@@ -115,6 +224,60 @@ function setupEventListeners() {
 
   sendBtn.addEventListener('click', handleSend);
   stopBtn.addEventListener('click', handleStop);
+
+  // File Attach Button
+  if (attachBtn && fileInput) {
+    attachBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      handleFiles(e.target.files);
+      fileInput.value = '';
+    });
+  }
+
+  // Paste file from clipboard
+  messageInput.addEventListener('paste', (e) => {
+    if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
+      e.preventDefault();
+      handleFiles(e.clipboardData.files);
+    }
+  });
+
+  // Drag and Drop files onto chat area
+  const chatArea = document.querySelector('.chat-area');
+  if (chatArea && dragOverlay) {
+    let dragCounter = 0;
+    ['dragenter', 'dragover'].forEach(eventName => {
+      chatArea.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    });
+
+    chatArea.addEventListener('dragenter', (e) => {
+      dragCounter++;
+      if (dragCounter === 1) {
+        dragOverlay.style.display = 'flex';
+      }
+    });
+
+    chatArea.addEventListener('dragleave', (e) => {
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        dragOverlay.style.display = 'none';
+      }
+    });
+
+    chatArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter = 0;
+      dragOverlay.style.display = 'none';
+      if (e.dataTransfer && e.dataTransfer.files) {
+        handleFiles(e.dataTransfer.files);
+      }
+    });
+  }
 
   // Clear history
   clearAllBtn.addEventListener('click', async () => {
@@ -263,13 +426,13 @@ function renderMessages(messages) {
 
   welcomeScreen.style.display = 'none';
   messages.forEach(msg => {
-    appendMessageElement(msg.role, msg.content, msg.id);
+    appendMessageElement(msg.role, msg.content, msg.id, msg.attachments);
   });
 
   scrollToBottom();
 }
 
-function appendMessageElement(role, content = '', msgId = null) {
+function appendMessageElement(role, content = '', msgId = null, attachments = []) {
   welcomeScreen.style.display = 'none';
 
   const row = document.createElement('div');
@@ -283,28 +446,44 @@ function appendMessageElement(role, content = '', msgId = null) {
   const contentBox = document.createElement('div');
   contentBox.className = 'message-content';
 
-  if (role === 'assistant') {
-    contentBox.innerHTML = window.marked ? marked.parse(content) : escapeHtml(content);
-    // Add copy action
-    const actions = document.createElement('div');
-    actions.className = 'message-actions';
-    actions.innerHTML = `
-      <button class="copy-btn">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-        </svg>
-        <span>Copy</span>
-      </button>
-    `;
-    actions.querySelector('.copy-btn').addEventListener('click', () => {
-      navigator.clipboard.writeText(contentBox.innerText);
-      actions.querySelector('span').textContent = 'Copied!';
-      setTimeout(() => actions.querySelector('span').textContent = 'Copy', 1500);
-    });
-    contentBox.appendChild(actions);
+  if (role === 'user') {
+    if (attachments && attachments.length > 0) {
+      const attachWrapper = document.createElement('div');
+      attachWrapper.className = 'message-attachments';
+      attachWrapper.innerHTML = attachments.map(att => `
+        <span class="attachment-badge">
+          <span>${att.type === 'pdf' ? '📄' : '📎'}</span>
+          <span>${escapeHtml(att.name)}</span>
+          <small>(${formatFileSize(att.size)})</small>
+        </span>
+      `).join('');
+      contentBox.appendChild(attachWrapper);
+    }
+    const textEl = document.createElement('div');
+    textEl.className = 'message-text';
+    textEl.textContent = content;
+    contentBox.appendChild(textEl);
   } else {
-    contentBox.textContent = content;
+    contentBox.innerHTML = window.marked ? marked.parse(content) : escapeHtml(content);
+    if (content) {
+      const actions = document.createElement('div');
+      actions.className = 'message-actions';
+      actions.innerHTML = `
+        <button class="copy-btn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <span>Copy</span>
+        </button>
+      `;
+      actions.querySelector('.copy-btn').addEventListener('click', () => {
+        navigator.clipboard.writeText(content);
+        actions.querySelector('span').textContent = 'Copied!';
+        setTimeout(() => actions.querySelector('span').textContent = 'Copy', 1500);
+      });
+      contentBox.appendChild(actions);
+    }
   }
 
   row.appendChild(avatar);
@@ -321,8 +500,16 @@ function scrollToBottom() {
 
 // Handling Chat & API Streaming
 async function handleSend() {
-  const text = messageInput.value.trim();
-  if (!text) return;
+  let text = messageInput.value.trim();
+  const hasAttachments = pendingAttachments.length > 0;
+
+  if (!text && !hasAttachments) return;
+
+  if (!text && hasAttachments) {
+    text = pendingAttachments.length === 1
+      ? `Please examine the attached file (${pendingAttachments[0].name}) and provide a helpful summary or analysis.`
+      : `Please examine the attached files and provide a helpful summary or analysis.`;
+  }
 
   const isHttp = window.location.protocol.startsWith('http');
   if (!isHttp && !settings.apiKey) {
@@ -337,13 +524,28 @@ async function handleSend() {
     currentChatId = newChat.id;
   }
 
+  // Snapshot current attachments and clear tray
+  const currentAttachments = [...pendingAttachments];
+  pendingAttachments = [];
+  renderAttachmentTray();
+
   // Clear input
   messageInput.value = '';
   adjustTextareaHeight();
 
   // Save user message to DB
-  await window.chatDb.addMessage(currentChatId, 'user', text);
-  appendMessageElement('user', text);
+  const attachmentMeta = currentAttachments.map(a => ({ name: a.name, size: a.size, type: a.type }));
+  await window.chatDb.addMessage(currentChatId, 'user', text, attachmentMeta);
+  appendMessageElement('user', text, null, attachmentMeta);
+
+  // Construct prompt containing attached file contents for LLM
+  let promptForModel = text;
+  if (currentAttachments.length > 0) {
+    const fileBlocks = currentAttachments.map(att => {
+      return `--- Start of File: ${att.name} ---\n${att.content}\n--- End of File: ${att.name} ---`;
+    }).join('\n\n');
+    promptForModel = `${fileBlocks}\n\nUser Request:\n${text}`;
+  }
 
   // Update chat title if it's the first message
   const messages = await window.chatDb.getMessages(currentChatId);
@@ -358,8 +560,12 @@ async function handleSend() {
   const apiMessages = [
     { role: 'system', content: settings.systemPrompt }
   ];
-  messages.forEach(m => {
-    apiMessages.push({ role: m.role, content: m.content });
+  messages.forEach((m, idx) => {
+    if (idx === messages.length - 1 && currentAttachments.length > 0) {
+      apiMessages.push({ role: m.role, content: promptForModel });
+    } else {
+      apiMessages.push({ role: m.role, content: m.content });
+    }
   });
 
   // Create UI element for assistant's pending response
