@@ -44,24 +44,11 @@ const clearAllBtn = document.getElementById('clearAllBtn');
 const chatTitleDisplay = document.getElementById('chatTitleDisplay');
 const currentModelLabel = document.getElementById('currentModelLabel');
 
-// Workspace & Auth elements
+// Workspace elements
 let currentWorkspace = 'personal'; // 'personal' or 'ooa'
-let authMode = 'signin'; // 'signin' or 'signup'
 const tabPersonal = document.getElementById('tabPersonal');
 const tabOOA = document.getElementById('tabOOA');
 const newChatBtnText = document.getElementById('newChatBtnText');
-const authBtn = document.getElementById('authBtn');
-const authBtnLabel = document.getElementById('authBtnLabel');
-const authModal = document.getElementById('authModal');
-const closeAuthBtn = document.getElementById('closeAuthBtn');
-const authForm = document.getElementById('authForm');
-const authEmail = document.getElementById('authEmail');
-const authPassword = document.getElementById('authPassword');
-const authSubmitBtn = document.getElementById('authSubmitBtn');
-const authErrorMsg = document.getElementById('authErrorMsg');
-const tabSignIn = document.getElementById('tabSignIn');
-const tabSignUp = document.getElementById('tabSignUp');
-const authModalTitle = document.getElementById('authModalTitle');
 
 // Attachment elements
 const attachmentTray = document.getElementById('attachmentTray');
@@ -133,67 +120,14 @@ async function initApp() {
 
   await window.chatDb.init({ url: sbUrl, key: sbKey });
 
-  // Listen to auth state changes from Supabase
-  window.chatDb.onAuthStateChange((event, session) => {
-    updateAuthUI(session);
-  });
-
-  updateAuthUI(window.chatDb.currentUser ? { user: window.chatDb.currentUser } : null);
-
   setupEventListeners();
   await loadChatList();
   updateModelBadge();
 }
 
-// Workspace & Auth Helpers
-function updateAuthUI(session) {
-  const user = session?.user || window.chatDb.currentUser;
-  if (user) {
-    const email = user.email || '';
-    const shortName = email.split('@')[0] || 'User';
-    authBtnLabel.textContent = shortName;
-    authBtn.title = `Signed in as ${email}. Click to sign out.`;
-  } else {
-    authBtnLabel.textContent = 'Sign In';
-    authBtn.title = 'Sign In / Register';
-  }
-}
-
-function openAuthModal(mode = 'signin') {
-  authMode = mode;
-  authErrorMsg.style.display = 'none';
-  authErrorMsg.textContent = '';
-  if (authMode === 'signin') {
-    tabSignIn.classList.add('active');
-    tabSignUp.classList.remove('active');
-    authModalTitle.textContent = 'Sign In';
-    authSubmitBtn.textContent = 'Sign In';
-  } else {
-    tabSignUp.classList.add('active');
-    tabSignIn.classList.remove('active');
-    authModalTitle.textContent = 'Create Account';
-    authSubmitBtn.textContent = 'Create Account';
-  }
-  authModal.style.display = 'flex';
-  authEmail.focus();
-}
-
-function closeAuthModal() {
-  authModal.style.display = 'none';
-  authErrorMsg.style.display = 'none';
-  authForm.reset();
-}
-
+// Workspace Management
 async function switchWorkspace(ws) {
   if (currentWorkspace === ws) return;
-
-  if (ws === 'ooa' && !window.chatDb.currentUser) {
-    const proceed = confirm('OOA Team Room requires signing in so your teammates can see your messages. Sign in now?');
-    if (proceed) {
-      openAuthModal('signin');
-    }
-    return;
-  }
 
   currentWorkspace = ws;
   window.chatDb.currentWorkspace = ws;
@@ -488,72 +422,6 @@ function setupEventListeners() {
   }
   if (tabOOA) {
     tabOOA.addEventListener('click', () => switchWorkspace('ooa'));
-  }
-
-  // Auth Button (Sign In / Account Sign Out)
-  if (authBtn) {
-    authBtn.addEventListener('click', async () => {
-      if (window.chatDb.currentUser) {
-        const confirmLogout = confirm(`Signed in as ${window.chatDb.currentUser.email}. Do you want to sign out?`);
-        if (confirmLogout) {
-          await window.chatDb.signOut();
-          updateAuthUI(null);
-          await switchWorkspace('personal');
-          await loadChatList();
-        }
-      } else {
-        openAuthModal('signin');
-      }
-    });
-  }
-
-  // Auth Modal Controls
-  if (closeAuthBtn) {
-    closeAuthBtn.addEventListener('click', closeAuthModal);
-  }
-  if (tabSignIn) {
-    tabSignIn.addEventListener('click', () => openAuthModal('signin'));
-  }
-  if (tabSignUp) {
-    tabSignUp.addEventListener('click', () => openAuthModal('signup'));
-  }
-  if (authModal) {
-    authModal.addEventListener('click', (e) => {
-      if (e.target === authModal) closeAuthModal();
-    });
-  }
-
-  // Auth Form Submission
-  if (authForm) {
-    authForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = authEmail.value.trim();
-      const password = authPassword.value;
-      if (!email || !password) return;
-
-      authSubmitBtn.disabled = true;
-      authSubmitBtn.textContent = 'Please wait...';
-      authErrorMsg.style.display = 'none';
-
-      try {
-        if (authMode === 'signin') {
-          await window.chatDb.signIn(email, password);
-        } else {
-          await window.chatDb.signUp(email, password);
-          alert('Account registered successfully! You are now signed in.');
-        }
-        closeAuthModal();
-        updateAuthUI({ user: window.chatDb.currentUser });
-        await loadChatList();
-      } catch (err) {
-        console.error('Auth error:', err);
-        authErrorMsg.textContent = err.message || 'Authentication failed. Please check your credentials.';
-        authErrorMsg.style.display = 'block';
-      } finally {
-        authSubmitBtn.disabled = false;
-        authSubmitBtn.textContent = authMode === 'signin' ? 'Sign In' : 'Create Account';
-      }
-    });
   }
 
   // Clear history for current workspace
@@ -944,13 +812,6 @@ async function handleSend() {
     return;
   }
 
-  // If in OOA team workspace and not signed in, require authentication
-  if (currentWorkspace === 'ooa' && !window.chatDb.currentUser) {
-    alert('Please sign in with your email to collaborate in the OOA Team Room.');
-    openAuthModal('signin');
-    return;
-  }
-
   let text = messageInput.value.trim();
   const hasAttachments = pendingAttachments.length > 0;
 
@@ -988,7 +849,7 @@ async function handleSend() {
   // Save user message to DB
   const attachmentMeta = currentAttachments.map(a => ({ name: a.name, size: a.size, type: a.type }));
   const savedUserMsg = await window.chatDb.addMessage(currentChatId, 'user', text, attachmentMeta);
-  appendMessageElement('user', text, savedUserMsg?.id, attachmentMeta, null, window.chatDb.currentUser?.email);
+  appendMessageElement('user', text, savedUserMsg?.id, attachmentMeta);
 
   // Construct prompt containing attached file contents for LLM
   let promptForModel = text;

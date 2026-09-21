@@ -940,50 +940,6 @@ body {
   font-size: 11px;
 }
 
-/* Auth Modal Styles */
-.auth-modal-content {
-  max-width: 380px;
-}
-
-.auth-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: 16px;
-}
-
-.auth-tab {
-  flex: 1;
-  padding: 10px;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  font-weight: 500;
-  font-size: 14px;
-  transition: all 0.15s;
-}
-
-.auth-tab:hover {
-  color: var(--text-main);
-}
-
-.auth-tab.active {
-  color: var(--accent-cyan);
-  border-bottom-color: var(--accent-cyan);
-  font-weight: 600;
-}
-
-.auth-error {
-  color: var(--danger);
-  font-size: 13px;
-  margin-top: 12px;
-  background: rgba(244, 63, 94, 0.1);
-  border: 1px solid rgba(244, 63, 94, 0.25);
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-}
-
 /* Team message author header */
 .message-author-tag {
   font-size: 11.5px;

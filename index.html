@@ -46,13 +46,6 @@
       </div>
 
       <div class="sidebar-footer">
-        <button id="authBtn" class="btn btn-sidebar auth-btn">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
-          <span id="authBtnLabel">Sign In</span>
-        </button>
         <button id="openSettingsBtn" class="btn btn-sidebar">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"></circle>
@@ -161,33 +154,6 @@
         </div>
       </div>
     </main>
-  </div>
-
-  <!-- Auth Modal (Sign In / Register) -->
-  <div class="modal-backdrop" id="authModal" style="display: none;">
-    <div class="modal-content auth-modal-content">
-      <div class="modal-header">
-        <h3 id="authModalTitle">Sign In</h3>
-        <button id="closeAuthBtn" class="btn btn-icon">&times;</button>
-      </div>
-      <div class="auth-tabs">
-        <button type="button" class="auth-tab active" id="tabSignIn">Sign In</button>
-        <button type="button" class="auth-tab" id="tabSignUp">Create Account</button>
-      </div>
-      <form id="authForm" class="modal-body" style="padding-top: 0;">
-        <label for="authEmail">Email Address</label>
-        <input type="email" id="authEmail" placeholder="you@company.com" required autocomplete="email" />
-
-        <label for="authPassword" style="margin-top: 14px;">Password</label>
-        <input type="password" id="authPassword" placeholder="••••••••" required minlength="6" autocomplete="current-password" />
-
-        <div id="authErrorMsg" class="auth-error" style="display: none;"></div>
-
-        <div class="modal-footer" style="margin-top: 20px;">
-          <button type="submit" id="authSubmitBtn" class="btn btn-primary" style="width: 100%;">Sign In</button>
-        </div>
-      </form>
-    </div>
   </div>
 
   <!-- Settings Modal -->
