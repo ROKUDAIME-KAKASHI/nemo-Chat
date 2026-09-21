@@ -79,6 +79,8 @@ const baseUrlInput = document.getElementById('baseUrlInput');
 const modelNameInput = document.getElementById('modelNameInput');
 const systemPromptInput = document.getElementById('systemPromptInput');
 const toggleApiKeyVisibility = document.getElementById('toggleApiKeyVisibility');
+const supabaseUrlInput = document.getElementById('supabaseUrlInput');
+const supabaseAnonKeyInput = document.getElementById('supabaseAnonKeyInput');
 
 // Configure marked options
 if (window.marked) {
@@ -102,8 +104,8 @@ window.setInput = function(text) {
 
 // Initialize Application
 async function initApp() {
-  let sbUrl = env.SUPABASE_URL || '';
-  let sbKey = env.SUPABASE_ANON_KEY || '';
+  let sbUrl = localStorage.getItem('nemo_supabase_url') || env.SUPABASE_URL || '';
+  let sbKey = localStorage.getItem('nemo_supabase_anon_key') || env.SUPABASE_ANON_KEY || '';
 
   // If running on a web server (e.g. Vercel or local proxy), fetch server configuration
   if (window.location.protocol.startsWith('http')) {
@@ -595,6 +597,12 @@ function openSettings() {
   baseUrlInput.value = settings.baseUrl;
   modelNameInput.value = settings.modelName;
   systemPromptInput.value = settings.systemPrompt;
+  if (supabaseUrlInput) {
+    supabaseUrlInput.value = localStorage.getItem('nemo_supabase_url') || env.SUPABASE_URL || '';
+  }
+  if (supabaseAnonKeyInput) {
+    supabaseAnonKeyInput.value = localStorage.getItem('nemo_supabase_anon_key') || env.SUPABASE_ANON_KEY || '';
+  }
   settingsModal.style.display = 'flex';
 }
 
@@ -616,6 +624,21 @@ function saveSettings() {
   localStorage.setItem('nemo_base_url', settings.baseUrl);
   localStorage.setItem('nemo_model_name', settings.modelName);
   localStorage.setItem('nemo_system_prompt', settings.systemPrompt);
+
+  const newSbUrl = supabaseUrlInput ? supabaseUrlInput.value.trim() : '';
+  const newSbKey = supabaseAnonKeyInput ? supabaseAnonKeyInput.value.trim() : '';
+  if (newSbUrl) localStorage.setItem('nemo_supabase_url', newSbUrl);
+  if (newSbKey) localStorage.setItem('nemo_supabase_anon_key', newSbKey);
+
+  if (newSbUrl || newSbKey) {
+    window.chatDb.init({
+      url: newSbUrl || env.SUPABASE_URL,
+      key: newSbKey || env.SUPABASE_ANON_KEY
+    }).then(() => {
+      updateAuthUI(window.chatDb.currentUser ? { user: window.chatDb.currentUser } : null);
+      loadChatList();
+    });
+  }
 
   updateModelBadge();
   closeSettings();

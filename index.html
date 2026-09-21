@@ -212,6 +212,17 @@
 
         <label for="systemPromptInput" style="margin-top: 14px;">System Prompt</label>
         <textarea id="systemPromptInput" rows="3">You are Mistral NeMo, a helpful, precise, and thoughtful AI assistant.</textarea>
+
+        <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-color);">
+          <h4 style="font-size: 13px; font-weight: 600; color: var(--text-main); margin-bottom: 10px;">Supabase Cloud Sync & Auth</h4>
+          <label for="supabaseUrlInput">Supabase Project URL</label>
+          <input type="text" id="supabaseUrlInput" placeholder="https://xyzcompany.supabase.co" />
+          <small class="helper-text">From Supabase &rarr; Project Settings &rarr; API &rarr; Project URL</small>
+
+          <label for="supabaseAnonKeyInput" style="margin-top: 12px;">Supabase Anon Key (Public)</label>
+          <input type="password" id="supabaseAnonKeyInput" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." />
+          <small class="helper-text">From Supabase &rarr; Project Settings &rarr; API &rarr; Project API keys (anon public)</small>
+        </div>
       </div>
       <div class="modal-footer">
         <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>

@@ -9,21 +9,53 @@ class ChatDatabase {
     this.currentUser = null;
     this.currentWorkspace = 'personal'; // 'personal' or 'ooa'
     this.activeChannel = null;
+    this.initError = null;
   }
 
   async init(supabaseConfig = null) {
     // 1. Initialize IndexedDB fallback
     await this.initIndexedDB();
 
-    // 2. Initialize Supabase if configured and library is loaded
-    if (supabaseConfig?.url && supabaseConfig?.key && window.supabase) {
+    this.initError = null;
+
+    if (!supabaseConfig?.url || !supabaseConfig?.key) {
+      this.initError = 'Supabase URL or Anon Key is missing. Please add SUPABASE_URL and SUPABASE_ANON_KEY to your .env or settings.';
+      return this;
+    }
+
+    let url = (supabaseConfig.url || '').trim();
+    let key = (supabaseConfig.key || '').trim();
+
+    // Check if user accidentally pasted PostgreSQL connection URI
+    if (key.startsWith('postgresql://') || key.startsWith('postgres://')) {
+      this.initError = 'You provided the PostgreSQL connection URI as the Anon Key. Supabase requires the "anon public" API Key (starts with eyJ...) from Supabase Project Settings -> API.';
+      console.warn(this.initError);
+      return this;
+    }
+
+    // Auto-normalize db.<ref>.supabase.co to https://<ref>.supabase.co
+    if (url.startsWith('db.')) {
+      url = 'https://' + url.replace(/^db\./, '');
+    } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+
+    if (window.supabase) {
       try {
-        this.supabase = window.supabase.createClient(supabaseConfig.url, supabaseConfig.key);
-        const { data: { session } } = await this.supabase.auth.getSession();
-        this.currentUser = session?.user || null;
+        this.supabase = window.supabase.createClient(url, key);
+        const { data: { session }, error } = await this.supabase.auth.getSession();
+        if (error) {
+          this.initError = `Supabase error: ${error.message}`;
+        } else {
+          this.currentUser = session?.user || null;
+          this.initError = null;
+        }
       } catch (err) {
         console.error('Supabase init failed:', err);
+        this.initError = `Supabase initialization failed: ${err.message}`;
       }
+    } else {
+      this.initError = 'Supabase client library (@supabase/supabase-js) failed to load.';
     }
 
     return this;
@@ -61,7 +93,7 @@ class ChatDatabase {
 
   // Auth methods
   async signUp(email, password) {
-    if (!this.supabase) throw new Error('Supabase is not configured.');
+    if (!this.supabase) throw new Error(this.initError || 'Supabase is not configured.');
     const { data, error } = await this.supabase.auth.signUp({ email, password });
     if (error) throw error;
     this.currentUser = data.user;
@@ -69,7 +101,7 @@ class ChatDatabase {
   }
 
   async signIn(email, password) {
-    if (!this.supabase) throw new Error('Supabase is not configured.');
+    if (!this.supabase) throw new Error(this.initError || 'Supabase is not configured.');
     const { data, error } = await this.supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     this.currentUser = data.user;
