@@ -72,14 +72,28 @@ window.setInput = function(text) {
 // Initialize Application
 async function initApp() {
   await window.chatDb.init();
-  updateModelBadge();
   setupEventListeners();
   await loadChatList();
 
-  // If no API key, prompt with settings
-  if (!settings.apiKey) {
-    openSettings();
+  // If running on a web server (e.g. Vercel or local proxy), fetch server configuration
+  if (window.location.protocol.startsWith('http')) {
+    try {
+      const res = await fetch('/api/config');
+      if (res.ok) {
+        const serverConfig = await res.json();
+        if (serverConfig.modelName && !localStorage.getItem('nemo_model_name')) {
+          settings.modelName = serverConfig.modelName;
+        }
+        if (serverConfig.baseUrl && !localStorage.getItem('nemo_base_url')) {
+          settings.baseUrl = serverConfig.baseUrl;
+        }
+      }
+    } catch (_) {
+      // Fallback silently if /api/config is not available
+    }
   }
+
+  updateModelBadge();
 }
 
 function updateModelBadge() {
@@ -155,7 +169,11 @@ function saveSettings() {
   settings.modelName = modelNameInput.value.trim() || 'mistralai/mistral-nemo';
   settings.systemPrompt = systemPromptInput.value.trim();
 
-  localStorage.setItem('nemo_api_key', settings.apiKey);
+  if (settings.apiKey) {
+    localStorage.setItem('nemo_api_key', settings.apiKey);
+  } else {
+    localStorage.removeItem('nemo_api_key');
+  }
   localStorage.setItem('nemo_base_url', settings.baseUrl);
   localStorage.setItem('nemo_model_name', settings.modelName);
   localStorage.setItem('nemo_system_prompt', settings.systemPrompt);
@@ -306,8 +324,9 @@ async function handleSend() {
   const text = messageInput.value.trim();
   if (!text) return;
 
-  if (!settings.apiKey) {
-    alert('Please provide your API key in Settings.');
+  const isHttp = window.location.protocol.startsWith('http');
+  if (!isHttp && !settings.apiKey) {
+    alert('Please provide your API key in Settings when running directly from a local file.');
     openSettings();
     return;
   }
@@ -351,16 +370,15 @@ async function handleSend() {
   abortController = new AbortController();
 
   try {
-    const isHttp = window.location.protocol.startsWith('http');
     let endpoint;
     let headers = { 'Content-Type': 'application/json' };
     let bodyPayload;
 
     if (isHttp) {
-      // Use local server proxy (zero CORS, handles streaming seamlessly)
+      // Use server proxy (Vercel serverless edge route or local server with env variables)
       endpoint = '/api/chat';
       bodyPayload = {
-        apiKey: settings.apiKey,
+        apiKey: settings.apiKey || undefined,
         baseUrl: settings.baseUrl,
         model: settings.modelName,
         messages: apiMessages

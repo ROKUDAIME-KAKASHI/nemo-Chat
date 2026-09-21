@@ -12,13 +12,13 @@ export default async function handler(req) {
 
   try {
     const body = await req.json();
-    const apiKey = body.apiKey || process.env.API_KEY || '';
+    const apiKey = (body.apiKey && body.apiKey.trim()) || process.env.API_KEY || '';
     const baseUrl = (body.baseUrl || process.env.BASE_URL || 'https://api.aicredits.in/v1').replace(/\/+$/, '');
     const model = body.model || process.env.MODEL_NAME || 'mistralai/mistral-nemo';
     const messages = body.messages || [];
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'API key is required' }), {
+      return new Response(JSON.stringify({ error: 'API key is required. Please set API_KEY in your Vercel environment variables or enter it in Settings.' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });

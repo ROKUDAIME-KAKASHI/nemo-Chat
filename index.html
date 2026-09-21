@@ -122,12 +122,12 @@
         <button id="closeSettingsBtn" class="btn btn-icon">&times;</button>
       </div>
       <div class="modal-body">
-        <label for="apiKeyInput">aicreds.in API Key <span class="required">*</span></label>
+        <label for="apiKeyInput">API Key <span style="font-size: 0.82em; font-weight: normal; color: var(--text-muted);">(Optional &mdash; provided by server / Vercel)</span></label>
         <div class="password-input-group">
-          <input type="password" id="apiKeyInput" placeholder="sk-..." autocomplete="off" />
+          <input type="password" id="apiKeyInput" placeholder="Using server environment key (or override here)" autocomplete="off" />
           <button type="button" id="toggleApiKeyVisibility" class="btn btn-icon">👁️</button>
         </div>
-        <small class="helper-text">Stored securely in your browser's localStorage.</small>
+        <small class="helper-text">Leave empty if configured in your Vercel environment variables.</small>
 
         <label for="baseUrlInput" style="margin-top: 14px;">API Base URL</label>
         <input type="text" id="baseUrlInput" value="https://api.aicredits.in/v1" />

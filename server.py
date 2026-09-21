@@ -37,6 +37,21 @@ class NemoHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
+    def do_GET(self):
+        if self.path == '/api/config':
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache, no-store')
+            self.end_headers()
+            cfg_resp = {
+                'configured': bool(config.get('API_KEY') or os.environ.get('API_KEY')),
+                'baseUrl': config.get('BASE_URL') or os.environ.get('BASE_URL', 'https://api.aicredits.in/v1'),
+                'modelName': config.get('MODEL_NAME') or os.environ.get('MODEL_NAME', 'mistralai/mistral-nemo')
+            }
+            self.wfile.write(json.dumps(cfg_resp).encode('utf-8'))
+            return
+        super().do_GET()
+
     def do_POST(self):
         if self.path == '/api/chat':
             content_length = int(self.headers.get('Content-Length', 0))
@@ -48,10 +63,17 @@ class NemoHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_error(400, f"Invalid JSON: {e}")
                 return
 
-            api_key = body.get('apiKey') or config.get('API_KEY', '')
-            base_url = (body.get('baseUrl') or config.get('BASE_URL', 'https://api.aicredits.in/v1')).rstrip('/')
-            model_name = body.get('model') or config.get('MODEL_NAME', 'mistralai/mistral-nemo')
+            api_key = (body.get('apiKey') or '').strip() or config.get('API_KEY', '') or os.environ.get('API_KEY', '')
+            base_url = (body.get('baseUrl') or config.get('BASE_URL') or os.environ.get('BASE_URL', 'https://api.aicredits.in/v1')).rstrip('/')
+            model_name = body.get('model') or config.get('MODEL_NAME') or os.environ.get('MODEL_NAME', 'mistralai/mistral-nemo')
             messages = body.get('messages', [])
+
+            if not api_key:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'API key is missing. Please set API_KEY in your environment or Settings.'}).encode('utf-8'))
+                return
 
             target_url = f"{base_url}/chat/completions"
             payload = json.dumps({
